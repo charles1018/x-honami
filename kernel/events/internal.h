@@ -30,6 +30,10 @@ struct ring_buffer {
 	spinlock_t			event_lock;
 	struct list_head		event_list;
 
+	atomic_t			mmap_count;
+	unsigned long			mmap_locked;
+	struct user_struct		*mmap_user;
+
 	struct perf_event_mmap_page	*user_page;
 	void				*data_pages[0];
 };
@@ -134,3 +138,4 @@ static inline void put_recursion_context(int *recursion, int rctx)
 }
 
 #endif /* _KERNEL_EVENTS_INTERNAL_H */
+
