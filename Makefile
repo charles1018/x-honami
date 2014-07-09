@@ -355,10 +355,18 @@ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 
-CFLAGS_MODULE   = -fno-pic -mcpu=cortex-a15 -mtune=cortex-a15 -march=armv7-a -mfpu=neon-vfpv4
-AFLAGS_MODULE   =
-LDFLAGS_MODULE  = --strip-debug
-CFLAGS_KERNEL	= -mcpu=cortex-a15 -mtune=cortex-a15 -march=armv7-a -mfpu=neon-vfpv4
+CHECKFLAGS := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
+-Wbitwise -Wno-return-void $(CF)
+KERNEL_FLAGS	= -mtune=cortex-a15 -marm \
+-mfpu=neon-vfpv4 -mvectorize-with-neon-quad \
+-fgcse-after-reload -fgcse-sm -fgcse-las \
+-ftree-loop-im -ftree-loop-ivcanon \
+-fivopts -ftree-vectorize -fmodulo-sched \
+-ffast-math
+CFLAGS_MODULE = -DMODULE $(KERNEL_FLAGS)
+AFLAGS_MODULE =
+LDFLAGS_MODULE = --strip-debug
+CFLAGS_KERNEL	= $(KERNEL_FLAGS)
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
