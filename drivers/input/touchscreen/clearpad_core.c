@@ -20,7 +20,6 @@
 #include <linux/delay.h>
 #include <linux/miscdevice.h>
 #include <linux/clearpad.h>
-#include <linux/input/evgen_helper.h>
 #include <mach/gpio.h>
 #include <linux/ctype.h>
 #include <linux/firmware.h>
@@ -435,7 +434,6 @@ struct synaptics_clearpad {
 	struct synaptics_function_descriptor pdt[SYN_N_FUNCTIONS];
 	struct synaptics_flash_image flash;
 	struct synaptics_easy_wakeup_config easy_wakeup_config;
-	struct evgen_block *evgen_blocks;
 	bool fwdata_available;
 	enum synaptics_flash_modes flash_mode;
 	struct synaptics_extents extents;
@@ -619,11 +617,6 @@ static struct synaptics_funcarea *clearpad_funcarea_get(
 static int clearpad_flip_config_get(u8 module_id, u8 rev)
 {
 	return SYN_FLIP_NONE;
-}
-
-static struct evgen_block *clearpad_evgen_block_get(u8 module_id, u8 rev)
-{
-	return NULL;
 }
 
 static void synaptics_clearpad_set_irq(struct synaptics_clearpad *this,
@@ -2524,24 +2517,6 @@ static int synaptics_clearpad_handle_gesture(struct synaptics_clearpad *this)
 			this->easy_wakeup_config.timeout_delay);
 	else
 		goto exit;
-
-	switch (wakeint) {
-	case XY_LPWG_STATUS_DOUBLE_TAP_DETECTED:
-		rc = evgen_execute(this->input, this->evgen_blocks,
-					"double_tap");
-		break;
-	case XY_LPWG_STATUS_SWIPE_DETECTED:
-		rc = evgen_execute(this->input, this->evgen_blocks,
-					"single_swipe");
-		break;
-	case XY_LPWG_STATUS_TWO_SWIPE_DETECTED:
-		rc = evgen_execute(this->input, this->evgen_blocks,
-					"two_swipe");
-		break;
-	default:
-		dev_info(&this->pdev->dev, "Gesture %d Not supported", wakeint);
-		break;
-	}
 exit:
 	return rc;
 }
@@ -3395,26 +3370,10 @@ exit:
 	return rc;
 }
 
-static int synaptics_clearpad_input_ev_init(struct synaptics_clearpad *this)
+static void synaptics_clearpad_input_ev_init(struct synaptics_clearpad *this)
 {
 	int rc = 0;
 
-	this->evgen_blocks = clearpad_evgen_block_get(
-		this->device_info.customer_family,
-		this->device_info.firmware_revision_major);
-	dev_info(&this->pdev->dev, "evgen_blocks is %s\n",
-		 this->evgen_blocks ? "used" : "null");
-	evgen_initialize(this->input, this->evgen_blocks);
-
-	if (this->evgen_blocks) {
-		rc = device_create_file(&this->input->dev,
-				&clearpad_wakeup_gesture_attr);
-		if (rc)
-			dev_err(&this->pdev->dev,
-				"sysfs_create_file failed: %d\n", rc);
-	}
-
-	return rc;
 }
 
 static int synaptics_clearpad_suspend(struct device *dev)
