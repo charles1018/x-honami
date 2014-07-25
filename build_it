@@ -11,38 +11,38 @@ if [ -f arch/arm/boot/zImage ]
 then
 
 echo "generating device tree..."
-../build_44/dtbTool -o ../build_44/dt.img -s 2048 -p ./scripts/dtc/ ./arch/arm/boot/
+../build_rhine/dtbTool -o ../build_rhine/dt.img -s 2048 -p ./scripts/dtc/ ./arch/arm/boot/
 
 ### copy zImage
-cp arch/arm/boot/zImage ../build_44/.
+cp arch/arm/boot/zImage ../build_rhine/.
 
-if [ -d ../build_44/boot.img-ramdisk/multirom/ ]
+if [ -d ../build_rhine/boot.img-ramdisk/multirom/ ]
 then
 #Copy ExFAT
-#cp drivers/exfat/exfat_core.ko ../build_44/boot.img-ramdisk/multirom/lib/
-#cp drivers/exfat/exfat_fs.ko ../build_44/boot.img-ramdisk/multirom/lib/
+#cp drivers/exfat/exfat_core.ko ../build_rhine/boot.img-ramdisk/multirom/lib/
+#cp drivers/exfat/exfat_fs.ko ../build_rhine/boot.img-ramdisk/multirom/lib/
 
 #Copy Peripheral Driver
-cp drivers/hid/hid-sony.ko ../build_44/boot.img-ramdisk/multirom/lib/
+cp drivers/hid/hid-sony.ko ../build_rhine/boot.img-ramdisk/multirom/lib/
 
 #Copy Gamma Driver
-cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_44/boot.img-ramdisk/multirom/lib/
+cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_rhine/boot.img-ramdisk/multirom/lib/
 
 else
 
 #Copy ExFAT
-#cp drivers/exfat/exfat_core.ko ../build_44/boot.img-ramdisk/lib/
-#cp drivers/exfat/exfat_fs.ko ../build_44/boot.img-ramdisk/lib/
+#cp drivers/exfat/exfat_core.ko ../build_rhine/boot.img-ramdisk/lib/
+#cp drivers/exfat/exfat_fs.ko ../build_rhine/boot.img-ramdisk/lib/
 
 #Copy Peripheral Driver
-cp drivers/hid/hid-sony.ko ../build_44/boot.img-ramdisk/lib/
+cp drivers/hid/hid-sony.ko ../build_rhine/boot.img-ramdisk/lib/
 
 #Copy Gamma Driver
-#cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_44/boot.img-ramdisk/lib/
+#cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_rhine/boot.img-ramdisk/lib/
 
 fi
 
-cd ../build_44/
+cd ../build_rhine/
 
-~/android/build_44/make_it.sh
+~/android/build_rhine/make_it.sh
 fi
