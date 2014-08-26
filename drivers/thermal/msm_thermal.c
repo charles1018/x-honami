@@ -40,6 +40,9 @@ module_param(user_freq_hot, int, 0755);
 unsigned int user_freq_warm = 1497600;
 module_param(user_freq_warm, int, 0755);
 
+unsigned int user_reschedule = 250;
+module_param(user_reschedule, int, 0755);
+
 static struct thermal_info {
 	uint32_t cpuinfo_max_freq;
 	uint32_t limited_max_freq;
@@ -142,7 +145,7 @@ static void check_temp(struct work_struct *work)
 	}
 
 reschedule:
-	schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(250));
+	schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(user_reschedule));
 }
 
 int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
