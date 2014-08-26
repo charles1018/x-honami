@@ -28,6 +28,18 @@
 unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
 
+unsigned int user_freq_hell = 729600;
+module_param(user_freq_hell, int, 0755);
+
+unsigned int user_freq_very_hot = 1036800;
+module_param(user_freq_very_hot, int, 0755);
+
+unsigned int user_freq_hot = 1267200;
+module_param(user_freq_hot, int, 0755);
+
+unsigned int user_freq_warm = 1497600;
+module_param(user_freq_warm, int, 0755);
+
 static struct thermal_info {
 	uint32_t cpuinfo_max_freq;
 	uint32_t limited_max_freq;
@@ -38,13 +50,6 @@ static struct thermal_info {
 	.limited_max_freq = LONG_MAX,
 	.safe_diff = 5,
 	.throttling = false,
-};
-
-enum thermal_freqs {
-	FREQ_HELL 	  = 729600,
-	FREQ_VERY_HOT = 1036800,
-	FREQ_HOT 	  = 1267200,
-	FREQ_WARM 	  = 1497600,
 };
 
 enum threshold_levels {
@@ -120,13 +125,13 @@ static void check_temp(struct work_struct *work)
 	}
 
 	if (temp >= temp_threshold + LEVEL_HELL)
-		freq = FREQ_HELL;
+		freq = user_freq_hell;
 	else if (temp >= temp_threshold + LEVEL_VERY_HOT)
-		freq = FREQ_VERY_HOT;
+		freq = user_freq_very_hot;
 	else if (temp >= temp_threshold + LEVEL_HOT)
-		freq = FREQ_HOT;
+		freq = user_freq_hot;
 	else if (temp > temp_threshold)
-		freq = FREQ_WARM;
+		freq = user_freq_warm;
 
 	if (freq)
 	{
