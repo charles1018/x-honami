@@ -1175,10 +1175,7 @@ void requeue_pi_wake_futex(struct futex_q *q, union futex_key *key,
  * Wake the top waiter if we succeed.  If the caller specified set_waiters,
  * then direct futex_lock_pi_atomic() to force setting the FUTEX_WAITERS bit.
  * hb1 and hb2 must be held by the caller.
- *
- * Returns:
- *  0 - failed to acquire the lock atomicly
- *  1 - acquired the lock
+
  * <0 - error
  */
 static int futex_proxy_trylock_atomic(u32 __user *pifutex,
@@ -1361,10 +1358,21 @@ retry_private:
 			WARN_ON(pi_state);
 			drop_count++;
 			task_count++;
-			ret = get_futex_value_locked(&curval2, uaddr2);
-			if (!ret)
-				ret = lookup_pi_state(curval2, hb2, &key2,
-						      &pi_state);
+
+			/*
+			 * If we acquired the lock, then the user
+			 * space value of uaddr2 should be vpid. It
+			 * cannot be changed by the top waiter as it
+			 * is blocked on hb2 lock if it tries to do
+			 * so. If something fiddled with it behind our
+			 * back the pi state lookup might unearth
+			 * it. So we rather use the known value than
+			 * rereading and handing potential crap to
+			 * lookup_pi_state.
+			 */
+
+			ret = lookup_pi_state(ret, hb2, &key2, &pi_state);
+
 		}
 
 		switch (ret) {
