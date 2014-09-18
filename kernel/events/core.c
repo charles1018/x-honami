@@ -1242,6 +1242,7 @@ static int __perf_remove_from_context(void *info)
  * When called from perf_event_exit_task, it's OK because the
  * context has been detached from its task.
  */
+
 static void perf_remove_from_context(struct perf_event *event, bool detach_group)
 {
 	struct perf_event_context *ctx = event->ctx;
@@ -6514,7 +6515,6 @@ SYSCALL_DEFINE5(perf_event_open,
 
 	if (move_group) {
 		struct perf_event_context *gctx = group_leader->ctx;
-
 		mutex_lock(&gctx->mutex);
 		perf_remove_from_context(group_leader, false);
 
@@ -7173,7 +7173,6 @@ static void __perf_event_exit_context(void *__info)
 
 	list_for_each_entry_rcu(re.event, &ctx->event_list, event_entry)
 		__perf_remove_from_context(&re);
-
 	rcu_read_unlock();
 }
 
