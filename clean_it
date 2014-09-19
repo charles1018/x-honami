@@ -1,4 +1,4 @@
-CUR_TC=~/android/test/AK-linaro/4.9.1-2014.04.20140425.CR83/bin/
+CUR_TC=~/android/test/4.9.2-2014.08.20140901.CR83/bin/
 
 ### cleaning
 ARCH=arm CROSS_COMPILE=${CUR_TC}arm-gnueabi- make distclean
