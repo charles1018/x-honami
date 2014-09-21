@@ -1,1 +1,2 @@
-*zImage-dtb
+arch/arm/boot/zImage-dtb
+patch
