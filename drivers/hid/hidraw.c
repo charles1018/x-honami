@@ -514,7 +514,7 @@ int hidraw_report_event(struct hid_device *hid, u8 *data, int len)
 		if (list < (struct hidraw_list *)PAGE_OFFSET
 				|| !(list->node.next))
 			break;
-
+#endif
 		int new_head = (list->head + 1) & (HIDRAW_BUFFER_SIZE - 1);
 
 		if (new_head == list->tail)
