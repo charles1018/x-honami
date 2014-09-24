@@ -37,6 +37,15 @@ else
 #Copy Peripheral Driver
 cp drivers/hid/hid-sony.ko ../build_rhine/boot.img-ramdisk/lib/
 
+#Copy WiFi
+cp drivers/staging/prima/wlan.ko ../topack/system/lib/modules/pronto/pronto_wlan.ko
+cp drivers/staging/prima/wlan.ko ../topack/system/lib/modules/wlan.ko
+cp drivers/staging/prima/firmware_bin/* ../topack/system/etc/firmware/wlan/prima/
+
+#Copy FMRadio
+
+cp drivers/media/radio/radio-iris-transport.ko ../topack/system/lib/modules/
+
 #Copy Gamma Driver
 #cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_rhine/boot.img-ramdisk/lib/
 
