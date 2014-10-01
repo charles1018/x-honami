@@ -48,11 +48,13 @@ static struct thermal_info {
 	uint32_t limited_max_freq;
 	unsigned int safe_diff;
 	bool throttling;
+	uint32_t sensor_id[3];
 } info = {
 	.cpuinfo_max_freq = LONG_MAX,
 	.limited_max_freq = LONG_MAX,
 	.safe_diff = 5,
 	.throttling = false,
+	.sensor_id = {1,5,7},
 };
 
 enum threshold_levels {
@@ -68,6 +70,25 @@ static struct delayed_work check_temp_work;
 unsigned short get_threshold(void)
 {
 	return temp_threshold;
+}
+
+unsigned int get_average_temp(int sensors[])	{
+
+	struct tsens_device tsens_dev;
+	int avg_temp = 0.0;
+	long curr_temp = 0.0;
+	int i;
+
+	for (i = 0; i < 3; i++)	{
+
+		tsens_dev.sensor_num = sensors[i];
+		tsens_get_temp(&tsens_dev, &curr_temp);
+		printk("Current temperature from Sensor %d is %lu \n",sensors[i], curr_temp);
+		avg_temp+=curr_temp;		
+			
+	}
+	
+	return (avg_temp/3);
 }
 
 static int msm_thermal_cpufreq_callback(struct notifier_block *nfb,
@@ -110,16 +131,16 @@ static void limit_cpu_freqs(uint32_t max_freq)
 
 static void check_temp(struct work_struct *work)
 {
-	struct tsens_device tsens_dev;
 	uint32_t freq = 0;
-	long temp = 0;
+	int avg_temp = 0.0;
 
-	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
-	tsens_get_temp(&tsens_dev, &temp);
+	avg_temp = get_average_temp(info.sensor_id);
+
+	printk("Average temperature is %d \n",avg_temp);
 
 	if (info.throttling)
 	{
-		if (temp < (temp_threshold - info.safe_diff))
+		if (avg_temp < (temp_threshold - info.safe_diff))
 		{
 			limit_cpu_freqs(info.cpuinfo_max_freq);
 			info.throttling = false;
@@ -127,13 +148,13 @@ static void check_temp(struct work_struct *work)
 		}
 	}
 
-	if (temp >= temp_threshold + LEVEL_HELL)
+	if (avg_temp >= temp_threshold + LEVEL_HELL)
 		freq = user_freq_hell;
-	else if (temp >= temp_threshold + LEVEL_VERY_HOT)
+	else if (avg_temp >= temp_threshold + LEVEL_VERY_HOT)
 		freq = user_freq_very_hot;
-	else if (temp >= temp_threshold + LEVEL_HOT)
+	else if (avg_temp >= temp_threshold + LEVEL_HOT)
 		freq = user_freq_hot;
-	else if (temp > temp_threshold)
+	else if (avg_temp > temp_threshold)
 		freq = user_freq_warm;
 
 	if (freq)
