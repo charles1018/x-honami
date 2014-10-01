@@ -45,7 +45,7 @@ unsigned int user_reschedule = 250;
 module_param(user_reschedule, int, 0755);
 
 unsigned int aggressiveness = 5;
-//module_param(aggressiveness, int, 0755);
+module_param(aggressiveness, int, 0755);
 
 unsigned int smart_monitoring = 1;
 module_param(smart_monitoring, int, 0755);
