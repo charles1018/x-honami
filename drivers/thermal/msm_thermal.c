@@ -44,25 +44,26 @@ module_param(user_freq_warm, int, 0755);
 unsigned int user_reschedule = 250;
 module_param(user_reschedule, int, 0755);
 
-unsigned int aggressiveness = 10;
+unsigned int aggressiveness = 5;
 //module_param(aggressiveness, int, 0755);
 
+unsigned int smart_monitoring = 1;
+module_param(smart_monitoring, int, 0755);
+
 int avg_temp = 0;
-int last_n_temp[100];
+int last_n_temp[10];
 int pos = 0;
 
 static struct thermal_info {
-	uint32_t cpuinfo_max_freq;
 	uint32_t limited_max_freq;
 	unsigned int safe_diff;
-	bool throttling;
 	uint32_t sensor_id[3];
+	bool busy;
 } info = {
-	.cpuinfo_max_freq = LONG_MAX,
 	.limited_max_freq = LONG_MAX,
 	.safe_diff = 5,
-	.throttling = false,
 	.sensor_id = {1,5,7},
+	.busy = false,
 };
 
 enum threshold_levels {
@@ -74,6 +75,7 @@ enum threshold_levels {
 static struct msm_thermal_data msm_thermal_info;
 
 static struct delayed_work check_temp_work;
+static struct delayed_work verify_freq_work;
 
 unsigned short get_threshold(void)
 {
@@ -102,8 +104,8 @@ unsigned int get_moving_average_temp(int new_avg)	{
 	int i;
 	int overall_avg_temp = 0;
 
-	if(aggressiveness > 25)
-		aggressiveness = 25;
+	if(aggressiveness > 5)
+		aggressiveness = 5;
 
 	if(pos > aggressiveness)	{
 		pos = 0;
@@ -138,24 +140,23 @@ static struct notifier_block msm_thermal_cpufreq_notifier = {
 	.notifier_call = msm_thermal_cpufreq_callback,
 };
 
-static void limit_cpu_freqs(uint32_t max_freq)
+static void verify_freq(struct work_struct *work)
 {
+
 	unsigned int cpu;
-
-	if (info.limited_max_freq == max_freq)
-		return;
-
-	info.limited_max_freq = max_freq;
 
 	/* Update new limits */
 	get_online_cpus();
 	for_each_online_cpu(cpu)
 	{
+		user_changed = false;
 		cpufreq_update_policy(cpu);
+		user_changed = true;
 		pr_info("%s: Setting cpu%d max frequency to %d\n",
 				KBUILD_MODNAME, cpu, info.limited_max_freq);
 	}
 	put_online_cpus();
+	info.busy = false;
 }
 
 static void check_temp(struct work_struct *work)
@@ -167,14 +168,12 @@ static void check_temp(struct work_struct *work)
 
 	printk("Average temperature is %d \n",avg_temp);
 
-	if (info.throttling)
+	if ((avg_temp < (temp_threshold - info.safe_diff)) && !info.busy)
 	{
-		if (avg_temp < (temp_threshold - info.safe_diff))
-		{
-			limit_cpu_freqs(info.cpuinfo_max_freq);
-			info.throttling = false;
-			goto reschedule;
-		}
+		info.limited_max_freq = ref_cpufreq_max;
+		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*4));
+		info.busy = true;
+		goto reschedule;
 	}
 
 	if (avg_temp >= (temp_threshold + LEVEL_HELL))
@@ -188,19 +187,26 @@ static void check_temp(struct work_struct *work)
 
 	if (freq)
 	{
-		limit_cpu_freqs(freq);
+		info.limited_max_freq = freq;
+		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*4));
 
-		if (!info.throttling)
-			info.throttling = true;
 	}
 
-	if(user_reschedule < 250)
-		user_reschedule = 250;
+	if(user_reschedule < 100)
+		user_reschedule = 100;
 
 	//aggressiveness = 100/(user_reschedule/250);
 
 reschedule:
-	schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(user_reschedule));
+	if(smart_monitoring == 1)	{
+		if(avg_temp < temp_threshold)
+			schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies((temp_threshold - avg_temp) * user_reschedule * 2));
+		else	
+			schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(user_reschedule));
+
+	}
+	else	
+		schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(user_reschedule));
 }
 
 int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
@@ -216,6 +222,8 @@ int __devinit msm_thermal_init(struct msm_thermal_data *pdata)
 
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
 	schedule_delayed_work_on(0, &check_temp_work, 0);
+
+	INIT_DELAYED_WORK(&verify_freq_work, verify_freq);
 
 	return ret;
 }
