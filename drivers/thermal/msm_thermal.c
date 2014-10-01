@@ -1,5 +1,6 @@
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
- *
+ * Copyright (c) 2014, Alok Nandan Nikhil (nikhil.jan93@gmail.com)
+ * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
@@ -43,6 +44,13 @@ module_param(user_freq_warm, int, 0755);
 unsigned int user_reschedule = 250;
 module_param(user_reschedule, int, 0755);
 
+unsigned int aggressiveness = 10;
+//module_param(aggressiveness, int, 0755);
+
+int avg_temp = 0;
+int last_n_temp[100];
+int pos = 0;
+
 static struct thermal_info {
 	uint32_t cpuinfo_max_freq;
 	uint32_t limited_max_freq;
@@ -75,20 +83,41 @@ unsigned short get_threshold(void)
 unsigned int get_average_temp(int sensors[])	{
 
 	struct tsens_device tsens_dev;
-	int avg_temp = 0.0;
+	int curr_avg = 0.0;
 	long curr_temp = 0.0;
 	int i;
 
 	for (i = 0; i < 3; i++)	{
-
 		tsens_dev.sensor_num = sensors[i];
 		tsens_get_temp(&tsens_dev, &curr_temp);
 		printk("Current temperature from Sensor %d is %lu \n",sensors[i], curr_temp);
-		avg_temp+=curr_temp;		
-			
+		curr_avg+=curr_temp;			
 	}
 	
-	return (avg_temp/3);
+	return (curr_avg/3);
+}
+
+unsigned int get_moving_average_temp(int new_avg)	{
+
+	int i;
+	int overall_avg_temp = 0;
+
+	if(aggressiveness > 25)
+		aggressiveness = 25;
+
+	if(pos > aggressiveness)	{
+		pos = 0;
+	}
+	
+	last_n_temp[pos] = new_avg;
+	
+	for(i = 0; i < aggressiveness; i++)	{
+		overall_avg_temp += last_n_temp[i];
+	}
+
+	pos++;
+	return (overall_avg_temp/aggressiveness);	
+
 }
 
 static int msm_thermal_cpufreq_callback(struct notifier_block *nfb,
@@ -132,9 +161,9 @@ static void limit_cpu_freqs(uint32_t max_freq)
 static void check_temp(struct work_struct *work)
 {
 	uint32_t freq = 0;
-	int avg_temp = 0.0;
 
 	avg_temp = get_average_temp(info.sensor_id);
+	avg_temp = get_moving_average_temp(avg_temp);
 
 	printk("Average temperature is %d \n",avg_temp);
 
@@ -148,11 +177,11 @@ static void check_temp(struct work_struct *work)
 		}
 	}
 
-	if (avg_temp >= temp_threshold + LEVEL_HELL)
+	if (avg_temp >= (temp_threshold + LEVEL_HELL))
 		freq = user_freq_hell;
-	else if (avg_temp >= temp_threshold + LEVEL_VERY_HOT)
+	else if (avg_temp >= (temp_threshold + LEVEL_VERY_HOT))
 		freq = user_freq_very_hot;
-	else if (avg_temp >= temp_threshold + LEVEL_HOT)
+	else if (avg_temp >= (temp_threshold + LEVEL_HOT))
 		freq = user_freq_hot;
 	else if (avg_temp > temp_threshold)
 		freq = user_freq_warm;
@@ -164,6 +193,11 @@ static void check_temp(struct work_struct *work)
 		if (!info.throttling)
 			info.throttling = true;
 	}
+
+	if(user_reschedule < 250)
+		user_reschedule = 250;
+
+	//aggressiveness = 100/(user_reschedule/250);
 
 reschedule:
 	schedule_delayed_work_on(0, &check_temp_work, msecs_to_jiffies(user_reschedule));
