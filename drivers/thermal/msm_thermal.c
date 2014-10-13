@@ -170,8 +170,9 @@ static void check_temp(struct work_struct *work)
 
 	if ((avg_temp < (temp_threshold - info.safe_diff)) && !info.busy)
 	{
+		user_changed = true;
 		info.limited_max_freq = ref_cpufreq_max;
-		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*4));
+		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*12));
 		info.busy = true;
 		goto reschedule;
 	}
@@ -187,8 +188,9 @@ static void check_temp(struct work_struct *work)
 
 	if (freq)
 	{
+		user_changed = false;
 		info.limited_max_freq = freq;
-		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*4));
+		schedule_delayed_work_on(0, &verify_freq_work, msecs_to_jiffies(user_reschedule*8));
 
 	}
 
