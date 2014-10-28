@@ -1051,7 +1051,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 									flags);
 
 		//pr_warn("App with id %d (%s) now loaded\n", app_id,
-		(char *)(load_img_req.img_name));
+		//(char *)(load_img_req.img_name));
 	}
 	data->client.app_id = app_id;
 	memcpy(data->client.app_name, load_img_req.img_name,
