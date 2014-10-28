@@ -959,8 +959,8 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		&qseecom.registered_app_list_lock, flags);
 		ret = 0;
 	} else {
-		pr_warn("App (%s) does'nt exist, loading apps for first time\n",
-			(char *)(load_img_req.img_name));
+		//pr_warn("App (%s) does'nt exist, loading apps for first time\n",
+			//(char *)(load_img_req.img_name));
 		/* Get the handle of the shared fd */
 		ihandle = ion_import_dma_buf(qseecom.ion_clnt,
 					load_img_req.ifd_data_fd);
@@ -2245,8 +2245,8 @@ int qseecom_start_app(struct qseecom_handle **handle,
 
 	data->client.app_id = ret;
 	if (ret > 0) {
-		pr_warn("App id %d for [%s] app exists\n", ret,
-			(char *)app_ireq.app_name);
+		//pr_warn("App id %d for [%s] app exists\n", ret,
+			//(char *)app_ireq.app_name);
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_for_each_entry(entry,
 				&qseecom.registered_app_list_head, list){
@@ -2258,9 +2258,9 @@ int qseecom_start_app(struct qseecom_handle **handle,
 		}
 		spin_unlock_irqrestore(
 				&qseecom.registered_app_list_lock, flags);
-		if (!found_app)
-			pr_warn("App_id %d [%s] was loaded but not registered\n",
-					ret, (char *)app_ireq.app_name);
+		//if (!found_app)
+			//pr_warn("App_id %d [%s] was loaded but not registered\n",
+					//ret, (char *)app_ireq.app_name);
 	} else {
 		/* load the app and get the app_id  */
 		pr_debug("%s: Loading app for the first time'\n",
