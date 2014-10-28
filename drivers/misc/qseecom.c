@@ -1050,7 +1050,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		spin_unlock_irqrestore(&qseecom.registered_app_list_lock,
 									flags);
 
-		pr_warn("App with id %d (%s) now loaded\n", app_id,
+		//pr_warn("App with id %d (%s) now loaded\n", app_id,
 		(char *)(load_img_req.img_name));
 	}
 	data->client.app_id = app_id;
@@ -1166,7 +1166,7 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data,
 								req.app_id);
 			return -EFAULT;
 		} else {
-			pr_warn("App id %d now unloaded\n", req.app_id);
+			//pr_warn("App id %d now unloaded\n", req.app_id);
 		}
 		if (resp.result == QSEOS_RESULT_FAILURE) {
 			pr_err("app (%d) unload_failed!!\n",
