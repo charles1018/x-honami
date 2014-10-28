@@ -26,6 +26,8 @@
 #include <linux/of.h>
 #include <mach/cpufreq.h>
 
+#define DEBUG 1
+
 unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0755);
 
@@ -50,9 +52,7 @@ module_param(aggressiveness, int, 0755);
 unsigned int smart_monitoring = 1;
 module_param(smart_monitoring, int, 0755);
 
-int avg_temp = 0;
 int last_n_temp[10];
-int pos = 0;
 
 static struct thermal_info {
 	uint32_t limited_max_freq;
@@ -73,7 +73,6 @@ enum threshold_levels {
 };
 
 static struct msm_thermal_data msm_thermal_info;
-
 static struct delayed_work check_temp_work;
 static struct delayed_work verify_freq_work;
 
@@ -82,28 +81,30 @@ unsigned short get_threshold(void)
 	return temp_threshold;
 }
 
-unsigned int get_average_temp(int sensors[])	{
+void get_average_temp(int sensors[], int *curr_avg)	{
 
 	struct tsens_device tsens_dev;
-	int curr_avg = 0.0;
 	long curr_temp = 0.0;
 	int i;
 
 	for (i = 0; i < 3; i++)	{
 		tsens_dev.sensor_num = sensors[i];
 		tsens_get_temp(&tsens_dev, &curr_temp);
-		printk("Current temperature from Sensor %d is %lu \n",sensors[i], curr_temp);
-		curr_avg+=curr_temp;			
+		if(DEBUG)
+			printk("Current temperature from Sensor %d is %lu \n",sensors[i], curr_temp);
+		
+		(*curr_avg)+=curr_temp;			
 	}
 	
-	return (curr_avg/3);
+	*curr_avg = (*curr_avg)/3;
 }
 
-unsigned int get_moving_average_temp(int new_avg)	{
+void get_moving_average_temp(int *new_avg)	{
 
 	int i;
 	int overall_avg_temp = 0;
-
+	int pos = 0;
+	
 	if(aggressiveness > 5)
 		aggressiveness = 5;
 
@@ -111,14 +112,15 @@ unsigned int get_moving_average_temp(int new_avg)	{
 		pos = 0;
 	}
 	
-	last_n_temp[pos] = new_avg;
+	last_n_temp[pos] = *new_avg;
 	
 	for(i = 0; i < aggressiveness; i++)	{
 		overall_avg_temp += last_n_temp[i];
 	}
 
 	pos++;
-	return (overall_avg_temp/aggressiveness);	
+
+	*new_avg = (overall_avg_temp/aggressiveness);	
 
 }
 
@@ -152,8 +154,10 @@ static void verify_freq(struct work_struct *work)
 		user_changed = false;
 		cpufreq_update_policy(cpu);
 		user_changed = true;
-		pr_info("%s: Setting cpu%d max frequency to %d\n",
+		if(DEBUG)
+			pr_info("%s: Setting cpu%d max frequency to %d\n",
 				KBUILD_MODNAME, cpu, info.limited_max_freq);
+
 	}
 	put_online_cpus();
 	info.busy = false;
@@ -162,11 +166,15 @@ static void verify_freq(struct work_struct *work)
 static void check_temp(struct work_struct *work)
 {
 	uint32_t freq = 0;
+	
+	int avg_temp = 0;
 
-	avg_temp = get_average_temp(info.sensor_id);
-	avg_temp = get_moving_average_temp(avg_temp);
+	get_average_temp(info.sensor_id, &avg_temp);
+	get_moving_average_temp(&avg_temp);
 
-	printk("Average temperature is %d \n",avg_temp);
+	if(DEBUG)
+		printk("Average temperature is %d \n",avg_temp);
+
 
 	if ((avg_temp < (temp_threshold - info.safe_diff)) && !info.busy)
 	{
