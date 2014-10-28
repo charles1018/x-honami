@@ -53,6 +53,7 @@ unsigned int smart_monitoring = 1;
 module_param(smart_monitoring, int, 0755);
 
 int last_n_temp[10];
+int pos = 0;
 
 static struct thermal_info {
 	uint32_t limited_max_freq;
@@ -103,7 +104,6 @@ void get_moving_average_temp(int *new_avg)	{
 
 	int i;
 	int overall_avg_temp = 0;
-	int pos = 0;
 	
 	if(aggressiveness > 5)
 		aggressiveness = 5;
