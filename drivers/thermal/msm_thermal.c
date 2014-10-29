@@ -77,11 +77,6 @@ static struct msm_thermal_data msm_thermal_info;
 static struct delayed_work check_temp_work;
 static struct delayed_work verify_freq_work;
 
-unsigned short get_threshold(void)
-{
-	return temp_threshold;
-}
-
 void get_average_temp(int sensors[], int *curr_avg)	{
 
 	struct tsens_device tsens_dev;
