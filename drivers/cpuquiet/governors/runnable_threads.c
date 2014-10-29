@@ -94,7 +94,7 @@ static unsigned int get_lightest_loaded_cpu_n(void)
 
 	for_each_online_cpu(i) {
 		unsigned int nr_runnables = get_avg_nr_running(i);
-
+		printk("*****Load on CPU %d is %d\n", i, nr_runnables);
 		if (i > 0 && min_avg_runnables > nr_runnables) {
 			cpu = i;
 			min_avg_runnables = nr_runnables;
