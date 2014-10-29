@@ -56,8 +56,9 @@ void cpuquiet_set_default_governor(struct cpuquiet_governor* gov)
 	if (!strnicmp("load_stats", gov->name, CPUQUIET_NAME_LEN))
 		default_gov = gov;
 #endif
-	if (!strnicmp("intelli_plug", gov->name, CPUQUIET_NAME_LEN))
+	if (!strnicmp("X-Plug", gov->name, CPUQUIET_NAME_LEN))
 		default_gov = gov;
+
 	if (default_gov != NULL)
 		cpuquiet_switch_governor(default_gov); 
 }

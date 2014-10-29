@@ -104,8 +104,11 @@ unsigned int report_load(void)
 
 	}
 
-	printk("Total load is %d\n", cur_load);
+	//printk("Total load is %d\n", cur_load);
 
 	cur_load /= num_online_cpus();
+
+	//printk("Per-CPU load is %d\n", cur_load);
+	
 	return cur_load;
 }
