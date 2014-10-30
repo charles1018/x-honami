@@ -44,10 +44,10 @@ static struct delayed_work xplug_work;
 static struct kobject *xplug_kobject;
 
 /* configurable parameters */
-static unsigned int sample_rate = 150;		/* msec */
+static unsigned int sample_rate = 250;		/* msec */
 
 /* 1 - target_load; 2 - target_thermal; 3 - target_history; 4 - target_predict */
-static unsigned int policy = 1;		
+static unsigned int policy = 4;		
 static void policy_function(void (*cpu_policy)(void))	{	cpu_policy();	}
 
 /* target_load parameters */	
@@ -56,6 +56,7 @@ static void target_load_policy(void);
 
 /* target_predict */
 static void target_predict_policy(void);
+static unsigned int response_index = 0;
 
 static XPLUG_STATE xplug_state;
 static struct workqueue_struct *xplug_wq;
@@ -66,7 +67,7 @@ static void target_load_policy(void)	{
 
 	unsigned int curr_load = report_load();
 	static signed int check_count = 0;	
-	int scaled_sampler = ((sample_rate * 25 * 5)/1000);
+	int scaled_sampler = ((sample_rate * 20 * 5)/1000);
 
 	if((curr_load) > target_load)	{
 		check_count--;
@@ -74,7 +75,7 @@ static void target_load_policy(void)	{
 	else if((curr_load) < (target_load))
 		check_count++;
 
-	if(check_count >= (scaled_sampler*2))		{	
+	if(check_count >= (scaled_sampler))		{	
 		if(num_online_cpus() > 1)	
 			printk("%s Going down\n", X_PLUG_TAG);
 		xplug_state = DOWN;
@@ -99,25 +100,32 @@ static void target_predict_policy(void)	{
 		curr_load = 8;
 		cpu_load[curr_load]++;
 
-		target_load = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? (curr_load - 1) : (curr_load);
+		response_index = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? (curr_load - 1) : (curr_load);
 
 	}
 	else if (curr_load == 0)	{
 		cpu_load[curr_load]++;
-		target_load = (cpu_load[curr_load + 1] > cpu_load[curr_load]) ? (curr_load + 1) : (curr_load);
+		response_index = (cpu_load[curr_load + 1] > cpu_load[curr_load]) ? (curr_load + 1) : (curr_load);
 	}
 
 	else	{
 		cpu_load[curr_load]++;
 
-		target_load = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? 
+		response_index = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? 
 				(cpu_load[curr_load - 1] > cpu_load[curr_load + 1] ? 
 				(curr_load - 1) : (curr_load + 1)) : (cpu_load[curr_load] > cpu_load[curr_load + 1] ? 
 				(curr_load) : (curr_load + 1));
 	}
 	
-	target_load *= 10;
-
+	response_index *= 10;
+	target_load = 100 - response_index;
+	printk("%s Current load history - %d|%d|%d|%d|%d|%d|%d|%d|%d\n", X_PLUG_TAG,
+									cpu_load[0], cpu_load[1],
+									cpu_load[2], cpu_load[3],
+									cpu_load[4], cpu_load[5],
+									cpu_load[6], cpu_load[7],
+									cpu_load[8]);
+	printk("%s Current load target - %d\n", X_PLUG_TAG, target_load);
 	policy_function(&target_load_policy);
 }
 
