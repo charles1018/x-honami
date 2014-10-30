@@ -30,7 +30,7 @@
 extern unsigned int cpq_max_cpus(void);
 extern unsigned int cpq_min_cpus(void);
 
-#define X_PLUG_TAG	"[X-Plug]: "
+#define X_PLUG_TAG	"[X-Plug]:"
 
 typedef enum {
 	DISABLED,
@@ -50,7 +50,7 @@ static unsigned int policy = 1;
 static void policy_function(void (*cpu_policy)(void))	{	cpu_policy();	}
 
 /* target_load parameters */	
-static unsigned int target_load = 60;
+static unsigned int target_load = 40;
 static void target_load_policy(void);
 
 /* target_predict */
@@ -74,14 +74,14 @@ static void target_load_policy(void)	{
 		check_count++;
 
 	if(check_count >= (scaled_sampler*2))		{	
-		if(num_online_cpus() > 1)
-			printk(strcat(X_PLUG_TAG, "Going down\n"));
+		if(num_online_cpus() > 1)	
+			printk("%s Going down\n", X_PLUG_TAG);
 		xplug_state = DOWN;
 		check_count = 0;
 	}
 	else if(check_count <= (-1 * scaled_sampler))	{
-		if(num_online_cpus() != nr_cpu_ids)
-			printk(strcat(X_PLUG_TAG, "Going up\n"));
+		if(num_online_cpus() != nr_cpu_ids)	
+			printk("%s Going up\n", X_PLUG_TAG);
 		xplug_state = UP;
 		check_count = 0;
 	}
@@ -109,6 +109,9 @@ static void xplug_work_func(struct work_struct *work)
 	//static int cpu_load[10] = {0,0,0,0,0,0,0,0,0,1};
 
 	mutex_lock(&xplug_work_lock);
+
+	if(target_load > 50)
+		target_load = 50;
 
 	update_xplug_state();
 
@@ -145,6 +148,9 @@ static void xplug_work_func(struct work_struct *work)
 		else
 			cpuquiet_quiesence_cpu(cpu);
 	}
+
+	printk("%s Current CPU state - Core %d|%d|%d|%d\n", X_PLUG_TAG, cpu_online(0), cpu_online(1), cpu_online(2), cpu_online(3)); 		
+
 	mutex_unlock(&xplug_work_lock);
 }
 
