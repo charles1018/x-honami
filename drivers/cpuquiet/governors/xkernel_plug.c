@@ -32,7 +32,8 @@ extern unsigned int cpq_max_cpus(void);
 extern unsigned int cpq_min_cpus(void);
 
 #define X_PLUG_TAG	"[X-Plug]:"
-//#define DEBUG_X_PLUG
+#define X_PLUG_INFO
+//#define X_PLUG_DEBUG
 
 typedef enum {
 	DISABLED,
@@ -77,15 +78,19 @@ static void target_load_policy(void)	{
 	else if((curr_load) < (target_load))
 		check_count++;
 
-	if(check_count >= (scaled_sampler))		{	
+	if(check_count >= (scaled_sampler))		{
+#ifdef X_PLUG_INFO	
 		if(num_online_cpus() > 1)	
 			printk("%s Going down\n", X_PLUG_TAG);
+#endif
 		xplug_state = DOWN;
 		check_count = 0;
 	}
 	else if(check_count <= ((-1 * scaled_sampler) + (dispatch_rate/20)))	{
+#ifdef X_PLUG_INFO
 		if(num_online_cpus() != nr_cpu_ids)	
 			printk("%s Going up\n", X_PLUG_TAG);
+#endif
 		xplug_state = UP;
 		check_count = 0;
 	}
@@ -121,6 +126,8 @@ static void target_predict_policy(void)	{
 	
 	response_index *= 10;
 	target_load = 100 - response_index;
+
+#ifdef X_PLUG_DEBUG
 	printk("%s Current load history - %d|%d|%d|%d|%d|%d|%d|%d|%d\n", X_PLUG_TAG,
 									cpu_load[0], cpu_load[1],
 									cpu_load[2], cpu_load[3],
@@ -128,6 +135,7 @@ static void target_predict_policy(void)	{
 									cpu_load[6], cpu_load[7],
 									cpu_load[8]);
 	printk("%s Current load target - %d\n", X_PLUG_TAG, target_load);
+#endif
 	policy_function(&target_load_policy);
 }
 
