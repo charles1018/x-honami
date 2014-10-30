@@ -208,7 +208,7 @@ static void xplug_work_func(struct work_struct *work)
 			cpuquiet_quiesence_cpu(cpu);
 	}
 
-#ifdef X_PLUG_INFO
+#ifdef X_PLUG_DEBUG
 	printk("%s Current CPU state - Core %d|%d|%d|%d\n", X_PLUG_TAG, cpu_online(0), cpu_online(1), cpu_online(2), cpu_online(3)); 		
 #endif
 	mutex_unlock(&xplug_work_lock);
