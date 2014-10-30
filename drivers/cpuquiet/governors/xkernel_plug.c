@@ -54,7 +54,8 @@ static void policy_function(void (*cpu_policy)(void))	{	cpu_policy();	}
 
 /* target_load parameters */	
 static unsigned int target_load = 40;
-static unsigned int dispatch_rate = 60;
+static unsigned int dispatch_rate = 2;
+static bool biased_down_up = false;
 static void target_load_policy(void);
 
 /* target_predict */
@@ -73,10 +74,17 @@ static void target_load_policy(void)	{
 	int scaled_sampler = ((sample_rate * 20 * 5)/1000);
 
 	if((curr_load) > target_load)	{
-		check_count--;
+		if(biased_down_up)
+			check_count-=dispatch_rate;
+		else
+			check_count--;
 	}
-	else if((curr_load) < (target_load))
-		check_count++;
+	else if((curr_load) < (target_load))	{
+		if(!biased_down_up)
+			check_count+=dispatch_rate;
+		else
+			check_count++;
+	}
 
 	if(check_count >= (scaled_sampler))		{
 #ifdef X_PLUG_INFO	
@@ -86,7 +94,7 @@ static void target_load_policy(void)	{
 		xplug_state = DOWN;
 		check_count = 0;
 	}
-	else if(check_count <= ((-1 * scaled_sampler) + (dispatch_rate/20)))	{
+	else if(check_count <= (-1 * scaled_sampler))	{
 #ifdef X_PLUG_INFO
 		if(num_online_cpus() != nr_cpu_ids)	
 			printk("%s Going up\n", X_PLUG_TAG);
@@ -200,8 +208,9 @@ static void xplug_work_func(struct work_struct *work)
 			cpuquiet_quiesence_cpu(cpu);
 	}
 
+#ifdef X_PLUG_INFO
 	printk("%s Current CPU state - Core %d|%d|%d|%d\n", X_PLUG_TAG, cpu_online(0), cpu_online(1), cpu_online(2), cpu_online(3)); 		
-
+#endif
 	mutex_unlock(&xplug_work_lock);
 }
 
@@ -209,11 +218,15 @@ static void xplug_work_func(struct work_struct *work)
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(policy, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(target_load, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(dispatch_rate, 0644, uint);
+CPQ_BASIC_ATTRIBUTE(biased_down_up, 0644, bool);
 
 static struct attribute *xplug_attributes[] = {
 	&sample_rate_attr.attr,
 	&policy_attr.attr,
 	&target_load_attr.attr,
+	&dispatch_rate_attr.attr,
+	&biased_down_up_attr.attr,
 	NULL,
 };
 
