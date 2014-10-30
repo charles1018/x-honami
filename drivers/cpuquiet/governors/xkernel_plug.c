@@ -143,7 +143,7 @@ static void xplug_work_func(struct work_struct *work)
 
 	mutex_lock(&xplug_work_lock);
 
-	if(target_load > 50)
+	if((target_load > 50) && (policy == 1))
 		target_load = 50;
 
 	update_xplug_state();
