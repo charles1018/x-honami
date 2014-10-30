@@ -10,3 +10,4 @@ u64 get_cpu_idle_time(unsigned int , u64 *);
 u64 get_cpu_iowait_time(unsigned int , u64 *);
 unsigned int calc_cur_load(unsigned int );
 unsigned int report_load(void);
+unsigned int get_lightest_loaded_cpu_n(void);

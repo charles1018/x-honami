@@ -29,8 +29,8 @@
 // from cpuquiet.c
 extern unsigned int cpq_max_cpus(void);
 extern unsigned int cpq_min_cpus(void);
-static int next_online(void);
-static int next_offline(void);
+
+#define X_PLUG_TAG	"[X-Plug]: "
 
 typedef enum {
 	DISABLED,
@@ -47,71 +47,56 @@ static unsigned int sample_rate = 150;		/* msec */
 
 /* 1 - target_load; 2 - target_thermal; 3 - target_history; 4 - target_predict */
 static unsigned int policy = 1;		
+static void policy_function(void (*cpu_policy)(void))	{	cpu_policy();	}
 
 /* target_load parameters */	
-static unsigned int target_load = 95;
-//static unsigned int hysteresis = 15;
-unsigned int next_online_cpu;
-signed int next_offline_cpu = -1;
+static unsigned int target_load = 60;
+static void target_load_policy(void);
+
+/* target_predict */
+//static void target_predict_policy(void);
 
 static XPLUG_STATE xplug_state;
 static struct workqueue_struct *xplug_wq;
 
 DEFINE_MUTEX(xplug_work_lock);
 
-static int next_online()	{
-	
-	next_online_cpu = (num_online_cpus()-1);
-	if(next_online_cpu == 0)
-		return 0;
-
-	next_online_cpu--;
-	
-	return (next_online_cpu + 1);
-}
-
-static int next_offline()	{
-	
-	next_online_cpu = (num_online_cpus()-1);
-
-	next_offline_cpu = next_online_cpu + 1;
-	
-	if(next_offline_cpu == (nr_cpu_ids))	{
-		next_offline_cpu = -1;
-		return -1;
-	}
-	
-	next_online_cpu = next_offline_cpu;
-	return (next_offline_cpu);
-}
-
-static void update_xplug_state(void)
-{
+static void target_load_policy(void)	{
 
 	unsigned int curr_load = report_load();
 	static signed int check_count = 0;	
 	int scaled_sampler = ((sample_rate * 25 * 5)/1000);
+
+	if((curr_load) > target_load)	{
+		check_count--;
+	}
+	else if((curr_load) < (target_load))
+		check_count++;
+
+	if(check_count >= (scaled_sampler*2))		{	
+		if(num_online_cpus() > 1)
+			printk(strcat(X_PLUG_TAG, "Going down\n"));
+		xplug_state = DOWN;
+		check_count = 0;
+	}
+	else if(check_count <= (-1 * scaled_sampler))	{
+		if(num_online_cpus() != nr_cpu_ids)
+			printk(strcat(X_PLUG_TAG, "Going up\n"));
+		xplug_state = UP;
+		check_count = 0;
+	}
+}
+
+static void update_xplug_state(void)
+{
 	
 	switch(policy)	{
 
-	case 1 : if((curr_load) > target_load)	{
-			check_count--;
-		 }
-		 else if((curr_load) < (target_load))
-			check_count++;
-
-		 if(check_count >= scaled_sampler)		{	
-			printk("Going down\n");
-			xplug_state = DOWN;
-			check_count = 0;
-		 }
-		 else if(check_count <= (-1 * scaled_sampler))	{
-			printk("Going up\n");
-			xplug_state = UP;
-			check_count = 0;
-		 }
-			
+	case 1 : policy_function(&target_load_policy);
 		 break;
+
+	case 4 : break;	
+	
 	}
 }
 
@@ -120,6 +105,8 @@ static void xplug_work_func(struct work_struct *work)
 	bool up = false;
 	bool sample = false;
 	unsigned int cpu = nr_cpu_ids;
+
+	//static int cpu_load[10] = {0,0,0,0,0,0,0,0,0,1};
 
 	mutex_lock(&xplug_work_lock);
 
@@ -132,13 +119,15 @@ static void xplug_work_func(struct work_struct *work)
 		sample = true;
 		break;
 	case UP:
-		cpu = next_offline();
+		cpu = cpumask_next_zero(0, cpu_online_mask);
 		up = true;
 		sample = true;
+		xplug_state = IDLE;
 		break;
 	case DOWN:
-		cpu = next_online();
+		cpu = get_lightest_loaded_cpu_n();
 		sample = true;
+		xplug_state = IDLE;
 		break;
 	default:
 		pr_err("%s: invalid cpuquiet runnable governor state %d\n",
@@ -149,16 +138,6 @@ static void xplug_work_func(struct work_struct *work)
 	if (sample)
 		queue_delayed_work(xplug_wq, &xplug_work,
 					msecs_to_jiffies(sample_rate));
-
-	if(cpu==-1)	{
-		mutex_unlock(&xplug_work_lock);
-		return;
-	}
-
-	if(cpu==0)	{
-		mutex_unlock(&xplug_work_lock);
-		return;
-	}
 
 	if (cpu < nr_cpu_ids) {
 		if (up)
@@ -173,7 +152,6 @@ static void xplug_work_func(struct work_struct *work)
 CPQ_BASIC_ATTRIBUTE(sample_rate, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(policy, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(target_load, 0644, uint);
-//CPQ_BASIC_ATTRIBUTE(hysteresis, 0644, uint);
 
 static struct attribute *xplug_attributes[] = {
 	&sample_rate_attr.attr,

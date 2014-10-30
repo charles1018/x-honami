@@ -69,24 +69,6 @@ static bool log_hotplugging = false;
 	if (log_hotplugging) pr_info("[LOAD_STATS]: " msg); \
 	} while (0)
 
-static unsigned int get_lightest_loaded_cpu_n(void)
-{
-	unsigned long min_avg_runnables = ULONG_MAX;
-	unsigned int cpu = nr_cpu_ids;
-	int i;
-
-	for_each_online_cpu(i) {
-		unsigned int nr_runnables = get_avg_nr_running(i);
-
-		if (i > 0 && min_avg_runnables > nr_runnables) {
-			cpu = i;
-			min_avg_runnables = nr_runnables;
-		}
-	}
-
-	return cpu;
-}
-
 static void update_load_stats_state(void)
 {
 	unsigned int load;

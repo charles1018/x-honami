@@ -112,3 +112,21 @@ unsigned int report_load(void)
 	
 	return cur_load;
 }
+
+unsigned int get_lightest_loaded_cpu_n(void)
+{
+	unsigned long min_avg_runnables = ULONG_MAX;
+	unsigned int cpu = nr_cpu_ids;
+	int i;
+
+	for_each_online_cpu(i) {
+		unsigned int nr_runnables = get_avg_nr_running(i);
+
+		if (i > 0 && min_avg_runnables > nr_runnables) {
+			cpu = i;
+			min_avg_runnables = nr_runnables;
+		}
+	}
+
+	return cpu;
+}
