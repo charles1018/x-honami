@@ -55,7 +55,7 @@ static unsigned int target_load = 40;
 static void target_load_policy(void);
 
 /* target_predict */
-//static void target_predict_policy(void);
+static void target_predict_policy(void);
 
 static XPLUG_STATE xplug_state;
 static struct workqueue_struct *xplug_wq;
@@ -88,6 +88,39 @@ static void target_load_policy(void)	{
 	}
 }
 
+static void target_predict_policy(void)	{
+
+	static int cpu_load[9] = {0,0,0,0,0,0,0,0,1};
+	unsigned int curr_load = report_load();
+
+	curr_load = curr_load/10;
+		
+	if((curr_load == 9) || (curr_load == 8))	{
+		curr_load = 8;
+		cpu_load[curr_load]++;
+
+		target_load = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? (curr_load - 1) : (curr_load);
+
+	}
+	else if (curr_load == 0)	{
+		cpu_load[curr_load]++;
+		target_load = (cpu_load[curr_load + 1] > cpu_load[curr_load]) ? (curr_load + 1) : (curr_load);
+	}
+
+	else	{
+		cpu_load[curr_load]++;
+
+		target_load = (cpu_load[curr_load - 1] > cpu_load[curr_load]) ? 
+				(cpu_load[curr_load - 1] > cpu_load[curr_load + 1] ? 
+				(curr_load - 1) : (curr_load + 1)) : (cpu_load[curr_load] > cpu_load[curr_load + 1] ? 
+				(curr_load) : (curr_load + 1));
+	}
+	
+	target_load *= 10;
+
+	policy_function(&target_load_policy);
+}
+
 static void update_xplug_state(void)
 {
 	
@@ -96,7 +129,8 @@ static void update_xplug_state(void)
 	case 1 : policy_function(&target_load_policy);
 		 break;
 
-	case 4 : break;	
+	case 4 : policy_function(&target_predict_policy);
+		 break;	
 	
 	}
 }
@@ -106,8 +140,6 @@ static void xplug_work_func(struct work_struct *work)
 	bool up = false;
 	bool sample = false;
 	unsigned int cpu = nr_cpu_ids;
-
-	//static int cpu_load[10] = {0,0,0,0,0,0,0,0,0,1};
 
 	mutex_lock(&xplug_work_lock);
 
