@@ -61,6 +61,7 @@ static void target_load_policy(void);
 /* target_predict */
 static void target_predict_policy(void);
 static unsigned int response_index = 0;
+static unsigned int min_target_load = 50;
 
 static XPLUG_STATE xplug_state;
 static struct workqueue_struct *xplug_wq;
@@ -134,6 +135,9 @@ static void target_predict_policy(void)	{
 	
 	response_index *= 10;
 	target_load = 100 - response_index;
+
+	if(target_load < min_target_load)
+		target_load = min_target_load;
 
 #ifdef X_PLUG_DEBUG
 	printk("%s Current load history - %d|%d|%d|%d|%d|%d|%d|%d|%d\n", X_PLUG_TAG,

@@ -31,8 +31,7 @@ cp arch/arm/mach-msm/msm_kcal_ctrl.ko ../build_rhine/boot.img-ramdisk/multirom/l
 else
 
 #Copy ExFAT
-#cp drivers/exfat/exfat_core.ko ../build_rhine/boot.img-ramdisk/lib/
-#cp drivers/exfat/exfat_fs.ko ../build_rhine/boot.img-ramdisk/lib/
+cp fs/exfat/exfat.ko ../build_rhine/ramdisk/sbin/libs/
 
 #Copy WiFi
 cp drivers/staging/prima/wlan.ko ../topack/system/lib/modules/pronto/pronto_wlan.ko
