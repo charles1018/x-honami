@@ -206,8 +206,10 @@ static void xplug_work_func(struct work_struct *work)
 					msecs_to_jiffies(sample_rate));
 
 	if (cpu < nr_cpu_ids) {
-		if (up)
-			cpuquiet_wake_cpu(cpu);
+		if (up)	{
+			if(cpu < cpq_max_cpus())
+				cpuquiet_wake_cpu(cpu);
+		}
 		else
 			cpuquiet_quiesence_cpu(cpu);
 	}
