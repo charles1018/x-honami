@@ -28,6 +28,7 @@
 #include "governor.h"
 
 static struct class *devfreq_class;
+static struct kobject *gpufreq_kobj;
 
 /*
  * devfreq core provides delayed work based load monitoring helper
@@ -743,6 +744,24 @@ err_out:
 	return err;
 }
 EXPORT_SYMBOL(devfreq_remove_governor);
+
+int devfreq_policy_add_files(struct devfreq *devfreq,
+struct attribute_group attr_group)
+{
+int ret;
+ret = sysfs_create_group(gpufreq_kobj, &attr_group);
+if (ret)
+kobject_put(gpufreq_kobj);
+return ret;
+}
+EXPORT_SYMBOL(devfreq_policy_add_files);
+
+void devfreq_policy_remove_files(struct devfreq *devfreq,
+struct attribute_group attr_group)
+{
+sysfs_remove_group(gpufreq_kobj, &attr_group);
+}
+EXPORT_SYMBOL(devfreq_policy_remove_files);
 
 static ssize_t show_governor(struct device *dev,
 			     struct device_attribute *attr, char *buf)
