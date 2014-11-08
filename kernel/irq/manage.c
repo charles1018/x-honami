@@ -912,278 +912,230 @@ static int
 __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 {
 	struct irqaction *old, **old_ptr;
-	const char *old_name = NULL;
-	unsigned long flags, thread_mask = 0;
-	int ret, nested, shared = 0;
-	cpumask_var_t mask;
-
-	if (!desc)
-		return -EINVAL;
-
-	if (desc->irq_data.chip == &no_irq_chip)
-		return -ENOSYS;
-	if (!try_module_get(desc->owner))
-		return -ENODEV;
-	/*
-	 * Some drivers like serial.c use request_irq() heavily,
-	 * so we have to be careful not to interfere with a
-	 * running system.
-	 */
-	if (new->flags & IRQF_SAMPLE_RANDOM) {
-		/*
-		 * This function might sleep, we want to call it first,
-		 * outside of the atomic block.
-		 * Yes, this might clear the entropy pool if the wrong
-		 * driver is attempted to be loaded, without actually
-		 * installing a new handler, but is this really a problem,
-		 * only the sysadmin is able to do this.
-		 */
-		rand_initialize_irq(irq);
-	}
-
-	/*
-	 * Check whether the interrupt nests into another interrupt
-	 * thread.
-	 */
-	nested = irq_settings_is_nested_thread(desc);
-	if (nested) {
-		if (!new->thread_fn) {
-			ret = -EINVAL;
-			goto out_mput;
-		}
-		/*
-		 * Replace the primary handler which was provided from
-		 * the driver for non nested interrupt handling by the
-		 * dummy function which warns when called.
-		 */
-		new->handler = irq_nested_primary_handler;
-	} else {
-		if (irq_settings_can_thread(desc))
-			irq_setup_forced_threading(new);
-	}
-
-	/*
-	 * Create a handler thread when a thread function is supplied
-	 * and the interrupt does not nest into another interrupt
-	 * thread.
-	 */
-	if (new->thread_fn && !nested) {
-		struct task_struct *t;
-
-		t = kthread_create(irq_thread, new, "irq/%d-%s", irq,
-				   new->name);
-		if (IS_ERR(t)) {
-			ret = PTR_ERR(t);
-			goto out_mput;
-		}
-		/*
-		 * We keep the reference to the task struct even if
-		 * the thread dies to avoid that the interrupt code
-		 * references an already freed task_struct.
-		 */
-		get_task_struct(t);
-		new->thread = t;
-		/*
-		 * Tell the thread to set its affinity. This is
-		 * important for shared interrupt handlers as we do
-		 * not invoke setup_affinity() for the secondary
-		 * handlers as everything is already set up. Even for
-		 * interrupts marked with IRQF_NO_BALANCE this is
-		 * correct as we want the thread to move to the cpu(s)
-		 * on which the requesting code placed the interrupt.
-		 */
-		set_bit(IRQTF_AFFINITY, &new->thread_flags);
-	}
-
-	if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
-		ret = -ENOMEM;
-		goto out_thread;
-	}
-
-	/*
-	 * The following block of code has to be executed atomically
-	 */
-	raw_spin_lock_irqsave(&desc->lock, flags);
-	old_ptr = &desc->action;
-	old = *old_ptr;
-	if (old) {
-		/*
-		 * Can't share interrupts unless both agree to and are
-		 * the same type (level, edge, polarity). So both flag
-		 * fields must have IRQF_SHARED set and the bits which
-		 * set the trigger type must match. Also all must
-		 * agree on ONESHOT.
-		 */
-		if (!((old->flags & new->flags) & IRQF_SHARED) ||
-		    ((old->flags ^ new->flags) & IRQF_TRIGGER_MASK) ||
-		    ((old->flags ^ new->flags) & IRQF_ONESHOT)) {
-			old_name = old->name;
-			goto mismatch;
-		}
-
-		/* All handlers must agree on per-cpuness */
-		if ((old->flags & IRQF_PERCPU) !=
-		    (new->flags & IRQF_PERCPU))
-			goto mismatch;
-
-		/* add new interrupt at end of irq queue */
-		do {
-			/*
-			 * Or all existing action->thread_mask bits,
-			 * so we can find the next zero bit for this
-			 * new action.
-			 */
-			thread_mask |= old->thread_mask;
-			old_ptr = &old->next;
-			old = *old_ptr;
-		} while (old);
-		shared = 1;
-	}
-
-	/*
-	 * Setup the thread mask for this irqaction for ONESHOT. For
-	 * !ONESHOT irqs the thread mask is 0 so we can avoid a
-	 * conditional in irq_wake_thread().
-	 */
-	if (new->flags & IRQF_ONESHOT) {
-		/*
-		 * Unlikely to have 32 resp 64 irqs sharing one line,
-		 * but who knows.
-		 */
-		if (thread_mask == ~0UL) {
-			ret = -EBUSY;
-			goto out_mask;
-		}
-		/*
-		 * The thread_mask for the action is or'ed to
-		 * desc->thread_active to indicate that the
-		 * IRQF_ONESHOT thread handler has been woken, but not
-		 * yet finished. The bit is cleared when a thread
-		 * completes. When all threads of a shared interrupt
-		 * line have completed desc->threads_active becomes
-		 * zero and the interrupt line is unmasked. See
-		 * handle.c:irq_wake_thread() for further information.
-		 *
-		 * If no thread is woken by primary (hard irq context)
-		 * interrupt handlers, then desc->threads_active is
-		 * also checked for zero to unmask the irq line in the
-		 * affected hard irq flow handlers
-		 * (handle_[fasteoi|level]_irq).
-		 *
-		 * The new action gets the first zero bit of
-		 * thread_mask assigned. See the loop above which or's
-		 * all existing action->thread_mask bits.
-		 */
-		new->thread_mask = 1 << ffz(thread_mask);
-	}
-
-	if (!shared) {
-		init_waitqueue_head(&desc->wait_for_threads);
-
-		/* Setup the type (level, edge polarity) if configured: */
-		if (new->flags & IRQF_TRIGGER_MASK) {
-			ret = __irq_set_trigger(desc, irq,
-					new->flags & IRQF_TRIGGER_MASK);
-
-			if (ret)
-				goto out_mask;
-		}
-
-		desc->istate &= ~(IRQS_AUTODETECT | IRQS_SPURIOUS_DISABLED | \
-				  IRQS_ONESHOT | IRQS_WAITING);
-		irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
-
-		if (new->flags & IRQF_PERCPU) {
-			irqd_set(&desc->irq_data, IRQD_PER_CPU);
-			irq_settings_set_per_cpu(desc);
-		}
-
-		if (new->flags & IRQF_ONESHOT)
-			desc->istate |= IRQS_ONESHOT;
-
-		if (irq_settings_can_autoenable(desc))
-			irq_startup(desc, true);
-		else
-			/* Undo nested disables: */
-			desc->depth = 1;
-
-		/* Exclude IRQ from balancing if requested */
-		if (new->flags & IRQF_NOBALANCING) {
-			irq_settings_set_no_balancing(desc);
-			irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
-		}
-
-		/* Set default affinity mask once everything is setup */
-		setup_affinity(irq, desc, mask);
-
-	} else if (new->flags & IRQF_TRIGGER_MASK) {
-		unsigned int nmsk = new->flags & IRQF_TRIGGER_MASK;
-		unsigned int omsk = irq_settings_get_trigger_mask(desc);
-
-		if (nmsk != omsk)
-			/* hope the handler works with current  trigger mode */
-			pr_warning("IRQ %d uses trigger mode %u; requested %u\n",
-				   irq, nmsk, omsk);
-	}
-
-	new->irq = irq;
-	*old_ptr = new;
-
-	/* Reset broken irq detection when installing new handler */
-	desc->irq_count = 0;
-	desc->irqs_unhandled = 0;
-
-	/*
-	 * Check whether we disabled the irq via the spurious handler
-	 * before. Reenable it and give it another chance.
-	 */
-	if (shared && (desc->istate & IRQS_SPURIOUS_DISABLED)) {
-		desc->istate &= ~IRQS_SPURIOUS_DISABLED;
-		__enable_irq(desc, irq, false);
-	}
-
-	raw_spin_unlock_irqrestore(&desc->lock, flags);
-
-	/*
-	 * Strictly no need to wake it up, but hung_task complains
-	 * when no hard interrupt wakes the thread up.
-	 */
-	if (new->thread)
-		wake_up_process(new->thread);
-
-	register_irq_proc(irq, desc);
-	new->dir = NULL;
-	register_handler_proc(irq, new);
-	free_cpumask_var(mask);
-
-	return 0;
-
+const char *old_name = NULL;
+unsigned long flags, thread_mask = 0;
+int ret, nested, shared = 0;
+cpumask_var_t mask;
+if (!desc)
+return -EINVAL;
+if (desc->irq_data.chip == &no_irq_chip)
+return -ENOSYS;
+if (!try_module_get(desc->owner))
+return -ENODEV;
+/*
+* Check whether the interrupt nests into another interrupt
+* thread.
+*/
+nested = irq_settings_is_nested_thread(desc);
+if (nested) {
+if (!new->thread_fn) {
+ret = -EINVAL;
+goto out_mput;
+}
+/*
+* Replace the primary handler which was provided from
+* the driver for non nested interrupt handling by the
+* dummy function which warns when called.
+*/
+new->handler = irq_nested_primary_handler;
+} else {
+if (irq_settings_can_thread(desc))
+irq_setup_forced_threading(new);
+}
+/*
+* Create a handler thread when a thread function is supplied
+* and the interrupt does not nest into another interrupt
+* thread.
+*/
+if (new->thread_fn && !nested) {
+struct task_struct *t;
+t = kthread_create(irq_thread, new, "irq/%d-%s", irq,
+new->name);
+if (IS_ERR(t)) {
+ret = PTR_ERR(t);
+goto out_mput;
+}
+/*
+* We keep the reference to the task struct even if
+* the thread dies to avoid that the interrupt code
+* references an already freed task_struct.
+*/
+get_task_struct(t);
+new->thread = t;
+/*
+* Tell the thread to set its affinity. This is
+* important for shared interrupt handlers as we do
+* not invoke setup_affinity() for the secondary
+* handlers as everything is already set up. Even for
+* interrupts marked with IRQF_NO_BALANCE this is
+* correct as we want the thread to move to the cpu(s)
+* on which the requesting code placed the interrupt.
+*/
+set_bit(IRQTF_AFFINITY, &new->thread_flags);
+}
+if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
+ret = -ENOMEM;
+goto out_thread;
+}
+/*
+* The following block of code has to be executed atomically
+*/
+raw_spin_lock_irqsave(&desc->lock, flags);
+old_ptr = &desc->action;
+old = *old_ptr;
+if (old) {
+/*
+* Can't share interrupts unless both agree to and are
+* the same type (level, edge, polarity). So both flag
+* fields must have IRQF_SHARED set and the bits which
+* set the trigger type must match. Also all must
+* agree on ONESHOT.
+*/
+if (!((old->flags & new->flags) & IRQF_SHARED) ||
+((old->flags ^ new->flags) & IRQF_TRIGGER_MASK) ||
+((old->flags ^ new->flags) & IRQF_ONESHOT)) {
+old_name = old->name;
+goto mismatch;
+}
+/* All handlers must agree on per-cpuness */
+if ((old->flags & IRQF_PERCPU) !=
+(new->flags & IRQF_PERCPU))
+goto mismatch;
+/* add new interrupt at end of irq queue */
+do {
+/*
+* Or all existing action->thread_mask bits,
+* so we can find the next zero bit for this
+* new action.
+*/
+thread_mask |= old->thread_mask;
+old_ptr = &old->next;
+old = *old_ptr;
+} while (old);
+shared = 1;
+}
+/*
+* Setup the thread mask for this irqaction for ONESHOT. For
+* !ONESHOT irqs the thread mask is 0 so we can avoid a
+* conditional in irq_wake_thread().
+*/
+if (new->flags & IRQF_ONESHOT) {
+/*
+* Unlikely to have 32 resp 64 irqs sharing one line,
+* but who knows.
+*/
+if (thread_mask == ~0UL) {
+ret = -EBUSY;
+goto out_mask;
+}
+/*
+* The thread_mask for the action is or'ed to
+* desc->thread_active to indicate that the
+* IRQF_ONESHOT thread handler has been woken, but not
+* yet finished. The bit is cleared when a thread
+* completes. When all threads of a shared interrupt
+* line have completed desc->threads_active becomes
+* zero and the interrupt line is unmasked. See
+* handle.c:irq_wake_thread() for further information.
+*
+* If no thread is woken by primary (hard irq context)
+* interrupt handlers, then desc->threads_active is
+* also checked for zero to unmask the irq line in the
+* affected hard irq flow handlers
+* (handle_[fasteoi|level]_irq).
+*
+* The new action gets the first zero bit of
+* thread_mask assigned. See the loop above which or's
+* all existing action->thread_mask bits.
+*/
+new->thread_mask = 1 << ffz(thread_mask);
+}
+if (!shared) {
+init_waitqueue_head(&desc->wait_for_threads);
+/* Setup the type (level, edge polarity) if configured: */
+if (new->flags & IRQF_TRIGGER_MASK) {
+ret = __irq_set_trigger(desc, irq,
+new->flags & IRQF_TRIGGER_MASK);
+if (ret)
+goto out_mask;
+}
+desc->istate &= ~(IRQS_AUTODETECT | IRQS_SPURIOUS_DISABLED | \
+IRQS_ONESHOT | IRQS_WAITING);
+irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
+if (new->flags & IRQF_PERCPU) {
+irqd_set(&desc->irq_data, IRQD_PER_CPU);
+irq_settings_set_per_cpu(desc);
+}
+if (new->flags & IRQF_ONESHOT)
+desc->istate |= IRQS_ONESHOT;
+if (irq_settings_can_autoenable(desc))
+irq_startup(desc, true);
+else
+/* Undo nested disables: */
+desc->depth = 1;
+/* Exclude IRQ from balancing if requested */
+if (new->flags & IRQF_NOBALANCING) {
+irq_settings_set_no_balancing(desc);
+irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
+}
+/* Set default affinity mask once everything is setup */
+setup_affinity(irq, desc, mask);
+} else if (new->flags & IRQF_TRIGGER_MASK) {
+unsigned int nmsk = new->flags & IRQF_TRIGGER_MASK;
+unsigned int omsk = irq_settings_get_trigger_mask(desc);
+if (nmsk != omsk)
+/* hope the handler works with current trigger mode */
+pr_warning("IRQ %d uses trigger mode %u; requested %u\n",
+irq, nmsk, omsk);
+}
+new->irq = irq;
+*old_ptr = new;
+/* Reset broken irq detection when installing new handler */
+desc->irq_count = 0;
+desc->irqs_unhandled = 0;
+/*
+* Check whether we disabled the irq via the spurious handler
+* before. Reenable it and give it another chance.
+*/
+if (shared && (desc->istate & IRQS_SPURIOUS_DISABLED)) {
+desc->istate &= ~IRQS_SPURIOUS_DISABLED;
+__enable_irq(desc, irq, false);
+}
+raw_spin_unlock_irqrestore(&desc->lock, flags);
+/*
+* Strictly no need to wake it up, but hung_task complains
+* when no hard interrupt wakes the thread up.
+*/
+if (new->thread)
+wake_up_process(new->thread);
+register_irq_proc(irq, desc);
+new->dir = NULL;
+register_handler_proc(irq, new);
+free_cpumask_var(mask);
+return 0;
 mismatch:
 #ifdef CONFIG_DEBUG_SHIRQ
-	if (!(new->flags & IRQF_PROBE_SHARED)) {
-		printk(KERN_ERR "IRQ handler type mismatch for IRQ %d\n", irq);
-		if (old_name)
-			printk(KERN_ERR "current handler: %s\n", old_name);
-		dump_stack();
-	}
+if (!(new->flags & IRQF_PROBE_SHARED)) {
+printk(KERN_ERR "IRQ handler type mismatch for IRQ %d\n", irq);
+if (old_name)
+printk(KERN_ERR "current handler: %s\n", old_name);
+dump_stack();
+}
 #endif
-	ret = -EBUSY;
-
+ret = -EBUSY;
 out_mask:
-	raw_spin_unlock_irqrestore(&desc->lock, flags);
-	free_cpumask_var(mask);
-
+raw_spin_unlock_irqrestore(&desc->lock, flags);
+free_cpumask_var(mask);
 out_thread:
-	if (new->thread) {
-		struct task_struct *t = new->thread;
-
-		new->thread = NULL;
-		kthread_stop(t);
-		put_task_struct(t);
-	}
+if (new->thread) {
+struct task_struct *t = new->thread;
+new->thread = NULL;
+kthread_stop(t);
+put_task_struct(t);
+}
 out_mput:
-	module_put(desc->owner);
-	return ret;
+module_put(desc->owner);
+return ret;
 }
 
 /**
