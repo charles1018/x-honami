@@ -734,6 +734,8 @@ static ssize_t store_scaling_governor_all_cpus(struct kobject *a, struct attribu
 		__cpufreq_cpu_put(cpu_policy, 0);
 	}
 	put_online_cpus();
+
+	return count;
 }
 
 #define store_pcpu_scaling_governor(num_core)					\
