@@ -77,6 +77,62 @@ struct cpufreq_suspend_t {
 
 static DEFINE_PER_CPU(struct cpufreq_suspend_t, cpufreq_suspend);
 
+#ifdef CONFIG_MSM_CPUFREQ_LIMITER
+static unsigned int upper_limit_freq[NR_CPUS] = {2265600, 2265600,
+2265600, 2265600};
+static unsigned int lower_limit_freq[NR_CPUS] = {0, 0, 0, 0};
+unsigned int get_cpu_min_lock(unsigned int cpu)
+{
+if (cpu >= 0 && cpu < NR_CPUS)
+return lower_limit_freq[cpu];
+else
+return 0;
+}
+EXPORT_SYMBOL(get_cpu_min_lock);
+void set_cpu_min_lock(unsigned int cpu, int freq)
+{
+if (cpu >= 0 && cpu < NR_CPUS) {
+if (freq <= 300000 || freq > 2803200)
+lower_limit_freq[cpu] = 0;
+else
+lower_limit_freq[cpu] = freq;
+}
+}
+EXPORT_SYMBOL(set_cpu_min_lock);
+unsigned int get_max_lock(unsigned int cpu)
+{
+if (cpu >= 0 && cpu < NR_CPUS)
+return upper_limit_freq[cpu];
+else
+return 0;
+}
+EXPORT_SYMBOL(get_max_lock);
+void set_max_lock(unsigned int cpu, unsigned int freq)
+{
+if (cpu >= 0 && cpu <= NR_CPUS) {
+if (freq <= 300000 || freq > 2803200)
+upper_limit_freq[cpu] = 0;
+else
+upper_limit_freq[cpu] = freq;
+}
+}
+EXPORT_SYMBOL(set_max_lock);
+#endif
+static int speed_bin, pvs_bin;
+void set_speed_pvs_bin(int speed, int pvs)
+{
+speed_bin = speed;
+pvs_bin = pvs;
+}
+void get_speed_bin(int *speed)
+{
+*speed = speed_bin;
+}
+void get_pvs_bin(int *pvs)
+{
+*pvs = pvs_bin;
+}
+
 unsigned long msm_cpufreq_get_bw(void)
 {
 	return mem_bw[max_freq_index];
@@ -660,3 +716,4 @@ static int __init msm_cpufreq_register(void)
 }
 
 device_initcall(msm_cpufreq_register);
+
