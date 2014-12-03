@@ -34,7 +34,9 @@
 #include <asm/mach/arch.h>
 #include <mach/board.h>
 #include <mach/gpiomux.h>
+#ifdef CONFIG_LCD_KCAL
 #include <mach/msm_kcal.h>
+#endif
 #include <mach/msm_iomap.h>
 #ifdef CONFIG_ION_MSM
 #include <mach/ion.h>
@@ -214,7 +216,9 @@ void __init msm8974_add_drivers(void)
 		msm_clock_init(&msm8974_clock_init_data);
 	tsens_tm_init_driver();
 	msm_thermal_device_init();
+#ifdef CONFIG_LCD_KCAL
 	msm_kcal_ctrl_init();
+#endif
 }
 
 static struct of_dev_auxdata msm_hsic_host_adata[] = {
