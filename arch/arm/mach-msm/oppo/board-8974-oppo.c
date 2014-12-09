@@ -1,5 +1,4 @@
 /* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
- * Copyright (c) 2013 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,9 +22,6 @@
 #include <linux/memory.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/krait-regulator.h>
-#include <linux/memory.h>
-#include <linux/memblock.h>
-#include <asm/setup.h>
 #include <linux/msm_tsens.h>
 #include <linux/msm_thermal.h>
 #include <asm/mach/map.h>
@@ -36,7 +32,7 @@
 #include <mach/gpiomux.h>
 #include <mach/msm_iomap.h>
 #ifdef CONFIG_ION_MSM
-#include <mach/ion.h>
+#include <linux/msm_ion.h>
 #endif
 #include <mach/msm_memtypes.h>
 #include <mach/msm_smd.h>
@@ -45,7 +41,6 @@
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
 #include <mach/msm_smem.h>
-#include <mach/msm_memory_dump.h>
 #include "board-dt.h"
 #include "clock.h"
 #include "devices.h"
@@ -53,142 +48,59 @@
 #include "pm.h"
 #include "modem_notifier.h"
 #include "platsmp.h"
-#ifdef CONFIG_RAMDUMP_TAGS
-#include "board-rdtags.h"
+
+#include <linux/persistent_ram.h>
+#include <linux/gpio.h>
+
+#include <linux/pcb_version.h>
+
+#ifdef CONFIG_KEXEC_HARDBOOT
+#include <asm/setup.h>
+#include <asm/memory.h>
+#include <linux/memblock.h>
+#define OPPO_PERSISTENT_RAM_SIZE	(SZ_1M)
 #endif
 
-static struct memtype_reserve msm8974_reserve_table[] __initdata = {
-	[MEMTYPE_SMI] = {
-	},
-	[MEMTYPE_EBI0] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-	[MEMTYPE_EBI1] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-};
+static struct platform_device *ram_console_dev;
 
-static int msm8974_paddr_to_memtype(phys_addr_t paddr)
-{
-	return MEMTYPE_EBI1;
-}
-
-static struct reserve_info msm8974_reserve_info __initdata = {
-	.memtype_reserve_table = msm8974_reserve_table,
-	.paddr_to_memtype = msm8974_paddr_to_memtype,
-};
-
-#ifdef CONFIG_RAMDUMP_TAGS
-static struct resource rdtags_resources[] = {
-	[0] = {
-		.name   = "rdtags_mem",
-		.flags  = IORESOURCE_MEM,
+static struct persistent_ram_descriptor msm_prd[] __initdata = {
+	{
+		.name = "ram_console",
+		.size = SZ_1M,
 	},
 };
 
-static struct platform_device rdtags_device = {
-	.name           = "rdtags",
-	.id             = -1,
-	.dev = {
-		.platform_data = &rdtags_platdata,
-	},
+static struct persistent_ram msm_pr __initdata = {
+	.descs = msm_prd,
+	.num_descs = ARRAY_SIZE(msm_prd),
+	.start = PLAT_PHYS_OFFSET + SZ_1G + SZ_512M,
+	.size = SZ_1M,
 };
-#endif
-
-#ifdef CONFIG_CRASH_LAST_LOGS
-
-static struct resource lastlogs_resources[] = {
-	[0] = {
-		.name	= "last_kmsg",
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.name	= "last_amsslog",
-		.flags	= IORESOURCE_MEM,
-	},
-};
-
-static struct platform_device lastlogs_device = {
-	.name           = "last_logs",
-	.id             = -1,
-};
-#endif
-
-#define RDTAGS_MEM_SIZE (256 * SZ_1K)
-#define RDTAGS_MEM_DESC_SIZE (256 * SZ_1K)
-#define LAST_LOGS_OFFSET (RDTAGS_MEM_SIZE + RDTAGS_MEM_DESC_SIZE)
-
-#ifdef CONFIG_CRASH_LAST_LOGS
-#define LAST_LOG_HEADER_SIZE 4096
-#define KMSG_LOG_SIZE ((1 << CONFIG_LOG_BUF_SHIFT) + LAST_LOG_HEADER_SIZE)
-#define AMSS_LOG_SIZE ((16 * SZ_1K) + LAST_LOG_HEADER_SIZE)
-#endif
-
-#if defined(CONFIG_RAMDUMP_TAGS) || defined(CONFIG_CRASH_LAST_LOGS)
-static void reserve_debug_memory(void)
-{
-	struct membank *mb = &meminfo.bank[meminfo.nr_banks - 1];
-	unsigned long bank_end = mb->start + mb->size;
-	/*Base address for rdtags*/
-	unsigned long debug_mem_base = bank_end - SZ_1M;
-	/*Base address for crash logs memory*/
-	unsigned long lastlogs_base = debug_mem_base + LAST_LOGS_OFFSET;
-
-	memblock_free(debug_mem_base, SZ_1M);
-	memblock_remove(debug_mem_base, SZ_1M);
-#ifdef CONFIG_RAMDUMP_TAGS
-	rdtags_resources[0].start = debug_mem_base;
-	rdtags_resources[0].end = debug_mem_base + RDTAGS_MEM_SIZE - 1;
-	debug_mem_base += RDTAGS_MEM_SIZE;
-	pr_info("Rdtags start %x end %x\n", \
-		(unsigned int)rdtags_resources[0].start, \
-		(unsigned int)rdtags_resources[0].end);
-	rdtags_device.num_resources = ARRAY_SIZE(rdtags_resources);
-	rdtags_device.resource = rdtags_resources;
-#endif
-#ifdef CONFIG_CRASH_LAST_LOGS
-	lastlogs_resources[0].start = lastlogs_base;
-	lastlogs_resources[0].end = lastlogs_base + KMSG_LOG_SIZE - 1;
-	lastlogs_base += KMSG_LOG_SIZE;
-	pr_info("last_kmsg start %x end %x\n", \
-		(unsigned int)lastlogs_resources[0].start, \
-		(unsigned int)lastlogs_resources[0].end);
-
-	lastlogs_resources[1].start = lastlogs_base;
-	lastlogs_resources[1].end = lastlogs_base + AMSS_LOG_SIZE - 1;
-	lastlogs_device.num_resources = ARRAY_SIZE(lastlogs_resources);
-	lastlogs_device.resource = lastlogs_resources;
-	pr_info("last_amsslog start %x end %x\n", \
-		(unsigned int)lastlogs_resources[1].start, \
-		(unsigned int)lastlogs_resources[1].end);
-#endif
-}
-#endif
 
 void __init msm_8974_reserve(void)
 {
-#if defined(CONFIG_RAMDUMP_TAGS) || defined(CONFIG_CRASH_LAST_LOGS)
-	reserve_debug_memory();
+#ifdef CONFIG_KEXEC_HARDBOOT
+	// Reserve space for hardboot page - just after ram_console,
+	// at the start of second memory bank
+	int ret;
+	phys_addr_t start;
+	struct membank* bank;
+	
+	if (meminfo.nr_banks < 2) {
+		pr_err("%s: not enough membank\n", __func__);
+		return;
+	}
+	
+	bank = &meminfo.bank[1];
+	start = bank->start + SZ_1M + OPPO_PERSISTENT_RAM_SIZE;
+	ret = memblock_remove(start, SZ_1M);
+	if(!ret)
+		pr_info("Hardboot page reserved at 0x%X\n", start);
+	else
+		pr_err("Failed to reserve space for hardboot page at 0x%X!\n", start);
 #endif
-	reserve_info = &msm8974_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_reserve, msm8974_reserve_table);
-	msm_reserve();
-}
-
-static void __init msm8974_early_memory(void)
-{
-	reserve_info = &msm8974_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_hole, msm8974_reserve_table);
-}
-
-void __init msm8974_add_devices(void)
-{
-#ifdef CONFIG_RAMDUMP_TAGS
-	platform_device_register(&rdtags_device);
-#endif
-#ifdef CONFIG_CRASH_LAST_LOGS
-	platform_device_register(&lastlogs_device);
-#endif
+	persistent_ram_early_init(&msm_pr);
+	of_scan_flat_dt(dt_scan_for_memory_reserve, NULL);
 }
 
 /*
@@ -213,6 +125,110 @@ void __init msm8974_add_drivers(void)
 		msm_clock_init(&msm8974_clock_init_data);
 	tsens_tm_init_driver();
 	msm_thermal_device_init();
+}
+
+#define DISP_ESD_GPIO 28
+#define DISP_LCD_UNK_GPIO 62
+static void __init oppo_config_display(void)
+{
+	int rc;
+
+	rc = gpio_request(DISP_ESD_GPIO, "disp_esd");
+	if (rc) {
+		pr_err("%s: request DISP_ESD GPIO failed, rc: %d",
+				__func__, rc);
+		return;
+	}
+
+	rc = gpio_tlmm_config(GPIO_CFG(DISP_ESD_GPIO, 0,
+				GPIO_CFG_INPUT,
+				GPIO_CFG_PULL_DOWN,
+				GPIO_CFG_2MA),
+			GPIO_CFG_ENABLE);
+	if (rc) {
+		pr_err("%s: unable to configure DISP_ESD GPIO, rc: %d",
+				__func__, rc);
+		gpio_free(DISP_ESD_GPIO);
+		return;
+	}
+
+	rc = gpio_direction_input(DISP_ESD_GPIO);
+	if (rc) {
+		pr_err("%s: set direction for DISP_ESD GPIO failed, rc: %d",
+				__func__, rc);
+		gpio_free(DISP_ESD_GPIO);
+		return;
+	}
+
+	if (get_pcb_version() >= HW_VERSION__20) {
+		rc = gpio_request(DISP_LCD_UNK_GPIO, "lcd_unk");
+		if (rc) {
+			pr_err("%s: request DISP_UNK GPIO failed, rc: %d",
+					__func__, rc);
+			return;
+		}
+
+		rc = gpio_direction_output(DISP_LCD_UNK_GPIO, 0);
+		if (rc) {
+			pr_err("%s: set direction for DISP_LCD_UNK GPIO failed, rc: %d",
+					__func__, rc);
+			gpio_free(DISP_LCD_UNK_GPIO);
+			return;
+		}
+	}
+}
+
+static void __init oppo_config_ramconsole(void)
+{
+	int ret;
+
+	ram_console_dev = platform_device_alloc("ram_console", -1);
+	if (!ram_console_dev) {
+		pr_err("%s: Unable to allocate memory for RAM console device",
+				__func__);
+		return;
+	}
+
+	ret = platform_device_add(ram_console_dev);
+	if (ret) {
+		pr_err("%s: Unable to add RAM console device", __func__);
+		return;
+	}
+}
+
+static struct rpm_regulator* sns_reg = 0;
+static struct delayed_work sns_dwork;
+
+static void oppo_config_sns_reg_release(struct work_struct *work)
+{
+	int ret;
+	pr_info("Releasing sensor regulator\n");
+	if (sns_reg) {
+		ret = rpm_regulator_disable(sns_reg);
+		if (ret)
+			pr_err("8941_l18 rpm_regulator_disable failed (%d)\n", ret);
+		rpm_regulator_put(sns_reg);
+		sns_reg = 0;
+	}
+}
+
+static void __init oppo_config_sns_power(void)
+{
+	int ret;
+
+	sns_reg = rpm_regulator_get(NULL, "8941_l18");
+	if (IS_ERR_OR_NULL(sns_reg)) {
+		ret = PTR_ERR(sns_reg);
+		pr_err("8941_l18 rpm_regulator_get failed (%d)\n", ret);
+		sns_reg = 0;
+	} else {
+		ret = rpm_regulator_enable(sns_reg);
+		if (ret)
+			pr_err("8941_l18 rpm_regulator_enable failed (%d)\n", ret);
+
+		INIT_DELAYED_WORK(&sns_dwork, oppo_config_sns_reg_release);
+		schedule_delayed_work(&sns_dwork, msecs_to_jiffies(30000));
+	}
 }
 
 static struct of_dev_auxdata msm_hsic_host_adata[] = {
@@ -278,18 +294,10 @@ void __init msm8974_init(void)
 	msm_8974_init_gpiomux();
 	regulator_has_full_constraints();
 	board_dt_populate(adata);
-	msm8974_add_devices();
 	msm8974_add_drivers();
-}
-
-void __init msm8974_init_very_early(void)
-{
-	msm8974_early_memory();
-}
-
-void __init msm8974_init_early(void)
-{
-	msm_reserve_last_regs();
+	oppo_config_display();
+	oppo_config_ramconsole();
+	oppo_config_sns_power();
 }
 
 static const char *msm8974_dt_match[] __initconst = {
@@ -306,8 +314,6 @@ DT_MACHINE_START(MSM8974_DT, "Qualcomm MSM 8974 (Flattened Device Tree)")
 	.timer = &msm_dt_timer,
 	.dt_compat = msm8974_dt_match,
 	.reserve = msm_8974_reserve,
-	.init_very_early = msm8974_init_very_early,
-	.init_early = msm8974_init_early,
 	.restart = msm_restart,
 	.smp = &msm8974_smp_ops,
 MACHINE_END
