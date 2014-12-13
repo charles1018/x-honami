@@ -442,4 +442,3 @@ CFLAGS_board-rdtags.o  := \
 	\"$(if $(TARGET_BUILD_VARIANT),$(TARGET_BUILD_VARIANT),unknown)\"" \
 	-D"INFO_BUILDID=\"$(if $(SEMC_SYSTEM_VERSION),$(SEMC_SYSTEM_VERSION),private)\""
 obj-$(CONFIG_HAS_MACH_MEMUTILS) += memutils/
-obj-$(CONFIG_LCD_KCAL) += msm_kcal_ctrl.o
