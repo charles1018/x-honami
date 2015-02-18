@@ -51,5 +51,4 @@ cd ../build_rhine/
 
 ~/android/build_rhine/make_it.sh
 
-cp boot.img ../topack/
 fi
