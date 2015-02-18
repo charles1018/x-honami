@@ -2528,7 +2528,7 @@ int mdss_dsi_panel_invert(int enable)
 	mdata = mdss_mdp_get_mdata();
 	for (i = 0; i < mdata->nctl; i++) {
 		ctl = mdata->ctl_off + i;
-		if ((mdss_mdp_ctl_is_power_on(ctl)) && (ctl->mfd) &&
+		if ((ctl->power_on) && (ctl->mfd) &&
 			(ctl->mfd->index == 0)) {
 			ctl_d = ctl;
 			break;
